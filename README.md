@@ -1,153 +1,193 @@
 # Pixel Mining
 
-An educational implementation of the SHA-256 pixel mining technique used by [Determined.ink](https://determined.ink), a cryptographic generative art project by Mariusz Brucki.
+An educational implementation of SHA-256 pixel mining, a novel generative art technique. Each pixel is found by searching, in a way inspired by [proof-of-work](https://en.wikipedia.org/wiki/Proof_of_work): you try many candidates until one is accepted. The color of that pixel comes from a [hash](https://en.wikipedia.org/wiki/Cryptographic_hash_function).
 
-Every pixel in a pixel-mined image is discovered through proof-of-work. There is no palette, no random number generator, no artistic filter. The colors come directly from SHA-256 hash digests, and each pixel is linked to the previous one in a cryptographic chain. The result is an image whose provenance is mathematically verifiable.
+This repo teaches the core idea, then gives you one small program you can run. Many details in that program are artistic choices (what to use as a seed, which neighbors to compare, whether there is a shape, how strict the numbers are, and so on). Those choices are examples. They are not the definition of pixel mining. Someone else could change them and still be doing pixel mining.
 
-This repository extracts and teaches the foundational algorithm. It is not the production miner (which uses multiprocessing, C extensions, and cloud infrastructure), but the core logic is identical.
+## The core idea
 
-## What pixel mining is
+Pixel mining needs four things:
 
-A pixel-mined image starts from a single seed: a millisecond timestamp. From that timestamp, the algorithm derives a SHA-256 hash that becomes the anchor of a chain. For every subsequent pixel, a *nonce search* runs: the algorithm tries nonce values (0, 1, 2, ...) until it finds one where the resulting hash produces an RGB color that satisfies a set of constraints relative to the pixel's neighbors.
+1. **A seed.** Start from any data you can turn into a hash: a number, a sentence, an image file, weather data, a sound file, anything. The seed is only the starting point of the chain.
 
-This is proof-of-work in the literal sense. The computational cost of finding each pixel is real and irreducible. There is no shortcut; the only way to produce the image is to do the hashing.
+2. **A hash chain.** A [hash](https://en.wikipedia.org/wiki/Cryptographic_hash_function) is a fingerprint of data. [SHA-256](https://en.wikipedia.org/wiki/SHA-2) is one common hash function: put anything in, get out a fixed-length fingerprint (the digest). In pixel mining, each next pixel’s hash is made from the previous pixel’s hash plus a small number called a **nonce** (a candidate you are testing: 0, then 1, then 2, and so on). If you keep the seed and every nonce, anyone can rebuild the whole chain and check that the image is real.
+
+3. **Color from the hash.** A hash digest is already written in the same discrete space as 8-bit RGB. [Hexadecimal](https://en.wikipedia.org/wiki/Hexadecimal) counts with 16 symbols per digit (`0`–`9` then `a`–`f`), where everyday decimal counts with 10 (`0`–`9`). Two hex digits make one byte: the smallest pair is `00` (decimal 0) and the largest is `FF` (decimal 255). That is exactly the range of one RGB channel. You are not squeezing cryptography into a foreign color model; you are reading color-sized units out of the digest. Which bytes or hex pairs you pick is up to you. What is fixed is that each channel must end up as a number from 0 to 255.
+
+4. **A rule that rejects most candidates.** If the rule is missing, or too loose, almost every nonce passes. Then there is little real search, and the picture collapses into noise: colorful static with no structure. So you define a rule that is strict enough. Only when the hash color passes the rule do you keep that pixel and move on. The rule can be almost anything: “stay close to neighboring pixels,” “stay inside a shape,” “be bright enough,” and so on. The important part is that the rule rejects most candidates, so each pixel costs real computer work.
+
+There is no color palette deciding the look in advance. The hash produces the color. The search for an accepted nonce is the work. The main principle of this technique is that the color of the next pixel is unknown until it is mined.
+
+### When the rule is too loose: noise
+
+A common early mistake is a rule that almost never says no. You still get an image file, but it looks like TV static. Here is one such early trial (100×100), kept as a warning, not as a finished piece:
+
+![Early noise from rules that were too loose](./examples/noise_loose_rules.png)
+
+Stricter rules mean more rejected nonces, more hashing, and usually more structure.
 
 ## How the hash chain works
 
-The chain starts with a seed hash derived from the timestamp:
+In short:
 
 ```
-seed_key     = str(timestamp_ms) + SHA-256(str(timestamp_ms))
-seed_hash    = SHA-256(seed_key)
+seed_hash  = SHA-256(seed_material)
+hash[n+1]  = SHA-256( hash[n] + str(nonce) )
 ```
 
-For every pixel after the seed, the next hash in the chain is:
+Concrete example with seed text `hello` and nonce `42`:
 
 ```
-hash[n+1] = SHA-256( hash[n] + str(nonce) )
+seed_material = "hello"
+
+seed_hash = SHA-256("hello")
+          = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+
+hash[1]   = SHA-256( seed_hash + "42" )
+          = bab33dabce41c0d51b4bc3f97640069320ac3214836368e8e542d0ab46a46ff1
 ```
 
-where `nonce` is the integer that was found through proof-of-work for pixel `n+1`. The chain is sequential, left to right, top to bottom. Given the seed timestamp and every nonce, anyone can replay the entire chain and verify that each pixel's color came from the correct hash.
+Each of those long strings is one SHA-256 digest: 64 hexadecimal characters (32 bytes). The next pixel would take `hash[1]`, try nonces again, and so on.
 
-## How RGB is extracted from a hash
+- `seed_material` is whatever you chose as the seed (text, a number as text, file bytes, …).
+- `nonce` is the integer that passed the rule for that pixel.
+- You must agree on an order of pixels (for example left to right, top to bottom). Any clear order is fine. Verification only needs everyone to use the same order.
 
-A SHA-256 digest is 64 hexadecimal characters. The algorithm samples hex-digit pairs at stride-3 offsets to produce three channel sums:
+## How this repo turns a hash into RGB
+
+See point 3 above for why hex pairs and RGB channels match (both use 0–255).
+
+A SHA-256 digest is 32 bytes long. Written in hex, that is 64 characters. This repo’s example builds each channel by adding several hex pairs from the digest, then keeping the result in range with modulo 256. “Modulo 256” means: after dividing by 256, keep only the remainder, so the answer is always between 0 and 255.
 
 ```
-R = (sum of hex pairs at positions 0, 3, 6, 9, ...) mod modulus
-G = (sum of hex pairs at positions 1, 4, 7, 10, ...) mod modulus
-B = (sum of hex pairs at positions 2, 5, 8, 11, ...) mod modulus
+R = (sum of hex pairs at positions 0, 3, 6, ...) mod 256
+G = (sum of hex pairs at positions 1, 4, 7, ...) mod 256
+B = (sum of hex pairs at positions 2, 5, 8, ...) mod 256
 ```
 
-The `modulus` (ranging from 1 to 256) is itself derived from a separate SHA-256 hash of the nonce, offset by a session-wide shift value. This means different nonces produce different color ranges, even from the same base hash.
+Skipping every third character (0, then 3, then 6, …) is only this example’s way to mix the digest into three channels. You could instead take the first three bytes of the digest, or any other clear recipe. What matters for the technique is still: color comes from the hash, and each channel is a number from 0 to 255.
 
-## Neighbor tolerance (the acceptance rule)
+Good practice is to use as much of the hash’s entropy as you can wherever you state your rules, so the outcome stays tied to the digest rather than to a tiny corner of it.
 
-Not every nonce produces a valid pixel. The candidate color must fall within a tolerance band of both its left neighbor and its top neighbor. For each color channel:
+## The acceptance rule in this example
 
-1. Compute the gap between the two neighbors: `gap = |left_channel - top_channel|`.
-2. The effective tolerance is the larger of the base tolerance and half the gap (rounded up): `eff_tol = max(base_tol, ceil(gap / 2))`.
-3. The candidate must satisfy `|candidate - left| <= eff_tol` and `|candidate - top| <= eff_tol`.
+Without a rule, or with a very weak one, nonce `0` (or the first few nonces) is often enough, and the image tends toward noise. With a useful rule, the program tries `0, 1, 2, …` until the color is accepted.
 
-Additionally, the candidate must not be identical to the top-right neighbor (if one exists), which prevents uniform flat patches.
+**In this repository**, the example rule is simple: the new pixel’s color should stay close to the pixel on its left and the pixel above it. That is easy to picture when you fill the image row by row. For each of R, G, and B:
 
-The base tolerance for background pixels is **5**. For circle pixels it is **13**. These values are structural constants of the v4 algorithm.
+1. Look at how far apart the left and top neighbors are on that channel.
+2. Allow at least that much room (and at least a minimum “tolerance” number you choose).
+3. Accept the candidate only if it sits inside that room for both neighbors.
 
-## Circle geometry
+The left/top neighbors, the exact formula, and the tolerance numbers (for example 5 or 13) are choices for this demo. Another artwork could use a different rule and still be pixel mining.
 
-The canvas is divided into two regions:
+## Other choices in this demo (optional)
 
-- A **central circle** with center `(width/2, height/2)` and radius `width/4`.
-- The **background**, which is everything outside the circle.
+These make the demo concrete. They are not required by the technique:
 
-The circle uses the higher tolerance (13 vs 5), giving it more color variation and a visually distinct texture from the background.
+| Choice in this repo | Why it is only an example |
+|---|---|
+| Default seed = current time | Handy. You can pass any `--seed` string instead. |
+| Fill order: left to right, top to bottom | One clear order. Other orders are fine if verification uses the same one. |
+| A circle in the middle | A composition idea. Other shapes, or no shape, are fine. |
+| Tolerance 5 outside the circle, 13 inside | Taste and speed. Larger numbers mean less search, but a noisier output. |
+| Background pixels ignore circle neighbors | A visual idea used here. Not required. |
 
-### Circle isolation
-
-Background pixels must never be influenced by circle pixels. When a background pixel needs to reference a neighbor and that neighbor happens to be inside the circle, the algorithm searches further away for the nearest non-circle pixel instead. Circle pixels, however, may reference background neighbors freely.
-
-This one-directional isolation keeps the background and circle cryptographically independent: you could mine the background without ever looking at what happened inside the circle (though the circle is part of the same hash chain).
+Larger artworks may use more rules on top of this. This teaching repo keeps things small on purpose.
 
 ## Running a demo
 
-Install dependencies and run the miner:
-
 ```bash
-pip install numpy Pillow
+pip install -e .
+# or: pip install numpy Pillow
 
-# Quick demo: 32x32 with relaxed tolerance (~80 seconds)
+# Small run with a looser (faster) tolerance
 python -m pixel_mining --width 32 --bg-tolerance 15
 
-# Production-accurate tolerances (slower, ~7 minutes for 32x32)
-python -m pixel_mining --width 32
+# Same image every time: any seed string
+python -m pixel_mining --width 32 --seed "hello" --bg-tolerance 15
 
-# Save nonces for verification
-python -m pixel_mining --width 32 --bg-tolerance 15 --save-nonces
-
-# Reproducible: same timestamp always produces the same image
+# Optional: use a timestamp number as the seed text
 python -m pixel_mining --width 32 --timestamp 1700000000000 --bg-tolerance 15
+
+# Also save every nonce (so the chain can be checked later)
+python -m pixel_mining --width 32 --seed "hello" --bg-tolerance 15 --save-nonces
 ```
 
-Output goes to the `output/` directory: a PNG image and (optionally) a JSON file containing every pixel's nonce, which is enough to fully verify the image.
+Results go into the `output/` folder: a PNG image, and optionally a JSON file listing every nonce.
 
-The `--bg-tolerance` flag controls how strict the background neighbor constraint is. The production value is 5, which means pure Python demos are slow (each pixel needs more nonces). Setting it to 15 speeds things up significantly while still demonstrating the core mechanism. The circle tolerance defaults to 13 and can be adjusted with `--circle-tolerance`.
+`--bg-tolerance` and `--circle-tolerance` only change this demo’s neighbor rule. Higher numbers usually finish faster, and can also make the image noisier if you push them too far.
 
-This implementation is single-threaded pure Python. A 32x32 grid (1,024 pixels) at tolerance 15 takes about 80 seconds. At the production tolerance of 5 it takes around 7 minutes. Production pieces at 300x300 or 1080x1080 run on 16-core cloud VMs with C extensions for hours or days.
+This code is plain Python on one CPU core. A small grid (for example 32×32) is meant for learning. It is not a production miner.
+
+## Mining for real (C, and CPUs with SHA hardware)
+
+Python is fine to learn the idea. It is a poor place to leave the nonce search if you care about finished pieces. Almost all of the time is spent hashing. A serious production miner should rewrite that hot loop in **C** (or another compiled language that can call the CPU’s hash instructions directly). Keep the same rules and the same chain. Only the search engine gets faster.
+
+This repository does **not** ship a C miner. The point here is the technique. When you move from demos to production, plan on a C inner loop, and usually on using many CPU cores in parallel for the nonce search.
+
+Hardware helps too. Many modern CPUs include instructions that accelerate SHA-256 (often called SHA extensions or SHA-NI). Your C code (or a solid crypto library) can use those so each hash costs fewer cycles than a pure software implementation.
+
+One solid choice used in practice for this work is **AMD EPYC 7B13** (Milan). It is a many-core server CPU with SHA acceleration, which fits long mining jobs. Similar options exist elsewhere in the same family and beyond, for example:
+
+- Other **AMD EPYC** chips from Zen 3 / Milan onward (and later EPYC generations), which also expose SHA acceleration
+- **AMD Ryzen** desktop chips (Zen and later), if you mine on a workstation instead of a cloud VM
+- **Intel** CPUs that support SHA-NI (for example many Ice Lake and newer client/server parts; check the specific model)
+
+Cloud listings do not always spell out “SHA-NI” in the marketing name. Prefer instance types whose CPU generation is known to include those instructions, then verify on the machine (`lscpu` / CPU flags, or your library’s runtime feature check). Faster hashing means less wall-clock time for the same rules, which also tends to mean less electricity for the same piece.
 
 ## Example pieces
 
-These are finished artworks mined with the circle geometry algorithm on a cloud VM.
+These images were mined as finished artworks (circle composition, and extra artistic rules beyond this teaching code). They show what the technique can look like when the rules are strict enough to escape noise. Running this repo will not recreate them pixel for pixel.
 
-### Piece 1774518366175 (300x300)
+### Piece 1774518366175 (600×600)
 
-![Piece 1774518366175](examples/piece_1774518366175.png)
+![Piece 1774518366175](./examples/piece_1774518366175.png)
 
-An earthy palette with olive and ochre tones. The central circle is visible as a textured disk with distinct color behavior from the background.
+Olive and ochre tones. The circle in the middle reads as its own disk.
 
-### Piece 1773744480267 (300x300)
+### Piece 1773744480267 (600×600)
 
-![Piece 1773744480267](examples/piece_1773744480267.png)
+![Piece 1773744480267](./examples/piece_1773744480267.png)
 
-Teal and green tones. The circle shows a different grain pattern because the higher tolerance (13 vs 5) allows the nonce search to find hits faster, producing more local color variation.
+Teal and green tones. The circle has a different grain from the background.
 
 ## Energy and ecological impact
 
-Pixel mining is real computation. Each piece consumes electricity proportional to its resolution and the tightness of the tolerance constraints.
+Pixel mining uses real electricity. Every rejected nonce is hashing work, so larger images and stricter rules cost more energy. That cost is part of the medium: the work is what makes the image’s history checkable.
 
-A 600x600 piece on a 16-vCPU cloud VM (AMD EPYC, estimated draw of around 140 W) takes roughly 120 hours of active mining. That is approximately 17 kWh of electricity, comparable to running a household fridge for five days, or about 24 washing machine cycles.
+If you mine on a laptop, notice the heat and the battery. If you mine in the cloud, prefer providers and regions that run on renewable or otherwise low-carbon electricity when you can. The technique does not require any particular cloud. It only requires computation.
 
-A 1080x1080 piece on the same hardware finishes in about 34 hours and uses roughly 5 kWh, equivalent to a day of fridge operation or a 25 km drive in an electric car.
+## What this repo leaves out
 
-The production mining VM runs in Google Cloud's Belgium region (europe-west1), where Google reports a carbon-free energy percentage of around 84%. The residual carbon footprint of a 5 kWh piece at the non-CFE grid intensity (roughly 103 g CO2e per kWh) comes to about 0.08 kg CO2e. Even if you ignore the carbon-free portion entirely, the full 5 kWh at grid rates is approximately 0.5 kg CO2e, which is small compared to a 100 km car trip (typically 15 to 20 kg CO2e).
-
-These figures are estimates based on machine type and mining duration, not metered watt telemetry. Datacenter cooling (PUE) may add 10 to 20 percent at the facility level. The energy cost is intentional. Proof-of-work is the medium, and the computation is the provenance.
-
-## What this repo does not include
-
-This is a teaching extract, not the production system. Specifically:
-
-- **No production infrastructure.** No Firebase streaming, no Google Cloud Storage, no checkpoint/resume system, no VM monitoring.
-- **No multiprocessing or C extensions.** The production miner parallelizes the nonce search across 16 CPU cores and uses a compiled C inner loop for SHA-256. This implementation is single-threaded pure Python, which is fine for small demos.
-- **No aesthetic systems.** The production codebase includes rolling brightness/spread tracking, painting-style seed floors, dark mode directional constraints, and Fibonacci-based tolerance adjustments. These are aesthetic tuning mechanisms layered on top of the structural algorithm. This repo implements only the structural foundation: hash chain, neighbor tolerance, circle geometry, and isolation.
-
-These aesthetic layers control how colorful, dark, or varied a piece looks. The structural algorithm (which is what this repo teaches) controls whether a pixel is *valid*.
+- A production C miner (see above: you should plan to write one if you mine seriously)
+- Cloud upload, databases, and resume/checkpoint systems used in a full studio setup
+- Extra artistic filters used in some finished pieces
+- Pixel-perfect copies of artworks published elsewhere
 
 ## Project structure
 
 ```
 pixel_mining/
-    __init__.py       Package metadata
-    core.py           Hash-to-RGB, chain, tolerance check, nonce search
-    geometry.py       Circle membership, isolation, neighbor selection
-    __main__.py       CLI entry point
+    __init__.py       Package info
+    core.py           Seed, hash to RGB, chain, example rule, nonce search
+    geometry.py       Example circle and neighbor helpers
+    __main__.py       Command-line program
 examples/
-    piece_*.png       Finished artworks from the Determined.ink collection
+    piece_*.png       Finished example artworks
+    noise_loose_rules.png   Early trial with rules too loose
 ```
+
+## Credits
+
+Pixel mining was invented by Mariusz Brucki, a generative art artist and data engineer from Poland.
+
+Contributions are welcome: clearer teaching material, other example rules, bug fixes, docs, and experiments that stay true to the core idea. If you build something with this technique, feel free to open an issue or a pull request and share it.
+
+## Projects
+
+- [Determined.ink](https://determined.ink) — the first public implementation of pixel mining, developed by Mariusz Brucki
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Links
-
-- [Determined.ink](https://determined.ink) — the live art project where these techniques are used in production

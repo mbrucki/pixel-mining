@@ -1,11 +1,11 @@
 """
-pixel_mining — educational extract of the SHA-256 pixel mining technique.
+pixel_mining — educational extract of SHA-256 pixel mining.
 
-Each pixel in the image is found by proof-of-work: a nonce search over SHA-256
-hashes until the resulting color satisfies neighbor-tolerance constraints.
-All pixels are linked in a cryptographic hash chain.
+Core technique: hash a seed, chain pixels with nonces, derive RGB from
+hashes (0..255), accept only nonces that pass some constraint.
 
-See README.md for the full explanation.
+This package's runnable demo uses one simple constraint set (left/top
+neighbors, optional circle). See README.md.
 """
 
 __version__ = "0.1.0"

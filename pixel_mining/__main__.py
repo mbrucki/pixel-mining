@@ -1,26 +1,26 @@
 """
 CLI entry point: python -m pixel_mining
 
-Mines a square image pixel by pixel using SHA-256 proof-of-work,
-saves the result as a PNG, and optionally writes a JSON verification file.
+Mines a square image with the example rules in this repo (left/top neighbor
+tolerance, optional central circle), saves a PNG, and optionally writes a
+JSON nonce log for chain replay.
 """
 
 import argparse
 import json
 import os
-import sys
 import time
 
 import numpy as np
 from PIL import Image
 
 from .core import derive_seed, hash_to_rgb, mine_pixel
-from .geometry import get_neighbors, in_circle, pixel_tolerance
+from .geometry import get_neighbors, in_circle
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Mine a pixel art image using SHA-256 proof-of-work."
+        description="Mine a pixel image using SHA-256 proof-of-work (teaching demo)."
     )
     parser.add_argument(
         "--width",
@@ -35,10 +35,17 @@ def main():
         help="Canvas height in pixels (default: same as width)",
     )
     parser.add_argument(
+        "--seed",
+        type=str,
+        default=None,
+        help="Arbitrary seed material (any string). Hashed to start the chain.",
+    )
+    parser.add_argument(
         "--timestamp",
         type=int,
         default=None,
-        help="Seed timestamp in milliseconds (default: current time)",
+        help="Convenience: use this millisecond timestamp string as the seed. "
+        "Ignored if --seed is set.",
     )
     parser.add_argument(
         "--output-dir",
@@ -55,15 +62,14 @@ def main():
         "--bg-tolerance",
         type=int,
         default=5,
-        help="Background neighbor tolerance (default: 5, production value). "
-        "Higher values mine faster with less color constraint. "
-        "Try 15 for a quick demo.",
+        help="Example background neighbor tolerance (default: 5). "
+        "Higher values mine faster. Try 15 for a quick demo.",
     )
     parser.add_argument(
         "--circle-tolerance",
         type=int,
         default=13,
-        help="Circle region neighbor tolerance (default: 13, production value)",
+        help="Example circle-region neighbor tolerance (default: 13)",
     )
     parser.add_argument(
         "--quiet",
@@ -74,29 +80,34 @@ def main():
 
     width = args.width
     height = args.height if args.height else width
-    timestamp_ms = args.timestamp if args.timestamp else int(time.time() * 1000)
+
+    if args.seed is not None:
+        seed_material = args.seed
+    elif args.timestamp is not None:
+        seed_material = str(args.timestamp)
+    else:
+        seed_material = str(int(time.time() * 1000))
+
     total_pixels = width * height
     bg_tol = args.bg_tolerance
     circle_tol = args.circle_tolerance
 
-    seed = derive_seed(timestamp_ms)
-    seed_hash = seed["seed_hash"]
-    modulo_shift = seed["modulo_shift"]
+    seed_hash = derive_seed(seed_material)
 
-    print(f"Pixel Mining", flush=True)
+    print("Pixel Mining", flush=True)
     print(f"  Canvas: {width} x {height} ({total_pixels:,} pixels)")
-    print(f"  Seed timestamp: {timestamp_ms}")
+    print(f"  Seed material: {seed_material!r}")
     print(f"  Seed hash: {seed_hash[:16]}...")
-    print(f"  Tolerance: background={bg_tol}, circle={circle_tol}")
+    print(f"  Example tolerances: background={bg_tol}, circle={circle_tol}")
     print(flush=True)
 
     pixels = np.zeros((width, height, 3), dtype=np.uint8)
     previous_hashes = {}
     nonce_log = {}
 
-    # Mine the seed pixel at (0, 0)
+    # First pixel: color from the seed hash (nonce recorded as 0 for the log).
     seed_nonce = 0
-    seed_rgb, _ = hash_to_rgb(seed_hash, seed_nonce, modulo_shift)
+    seed_rgb = hash_to_rgb(seed_hash)
     pixels[0, 0] = seed_rgb
     previous_hashes[(0, 0)] = seed_hash
     nonce_log["0,0"] = seed_nonce
@@ -113,13 +124,12 @@ def main():
                 continue
 
             left_rgb, top_rgb, top_right_rgb = get_neighbors(
-                col, row, width, height, pixels, previous_hashes, timestamp_ms
+                col, row, width, height, pixels
             )
 
-            if in_circle(col, row, width, height):
-                tolerance = circle_tol
-            else:
-                tolerance = bg_tol
+            tolerance = (
+                circle_tol if in_circle(col, row, width, height) else bg_tol
+            )
 
             if col > 0:
                 prev_hash = previous_hashes[(col - 1, row)]
@@ -129,7 +139,7 @@ def main():
                 prev_hash = previous_hashes[(0, 0)]
 
             new_hash, rgb, nonce = mine_pixel(
-                prev_hash, left_rgb, top_rgb, tolerance, modulo_shift, top_right_rgb
+                prev_hash, left_rgb, top_rgb, tolerance, top_right_rgb
             )
 
             pixels[col, row] = rgb
@@ -151,27 +161,35 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Save PNG (pixels array is column-major [x, y], PIL expects row-major [y, x])
     img_array = np.swapaxes(pixels, 0, 1)
     img = Image.fromarray(img_array, "RGB")
-    png_path = os.path.join(args.output_dir, f"mined_{timestamp_ms}_{width}x{height}.png")
+    safe_label = "".join(c if c.isalnum() or c in "-_" else "_" for c in seed_material)[
+        :48
+    ]
+    png_path = os.path.join(
+        args.output_dir, f"mined_{safe_label}_{width}x{height}.png"
+    )
     img.save(png_path)
 
     print(flush=True)
-    print(f"Done. {total_pixels:,} pixels mined in {elapsed:.1f}s ({total_pixels / elapsed:.1f} px/s)")
+    print(
+        f"Done. {total_pixels:,} pixels mined in {elapsed:.1f}s "
+        f"({total_pixels / elapsed:.1f} px/s)"
+    )
     print(f"  Image: {png_path}", flush=True)
 
     if args.save_nonces:
         verification = {
-            "timestamp_ms": timestamp_ms,
+            "seed_material": seed_material,
+            "seed_hash": seed_hash,
             "width": width,
             "height": height,
-            "seed_hash": seed_hash,
-            "modulo_shift": modulo_shift,
+            "bg_tolerance": bg_tol,
+            "circle_tolerance": circle_tol,
             "nonces": nonce_log,
         }
         json_path = os.path.join(
-            args.output_dir, f"nonces_{timestamp_ms}_{width}x{height}.json"
+            args.output_dir, f"nonces_{safe_label}_{width}x{height}.json"
         )
         with open(json_path, "w") as f:
             json.dump(verification, f, indent=2)

@@ -1,11 +1,11 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pixel-mining"
 version = "0.1.0"
-description = "Educational extract of the SHA-256 pixel mining technique from Determined.ink"
+description = "Educational SHA-256 pixel mining: core technique plus a simple runnable example"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
