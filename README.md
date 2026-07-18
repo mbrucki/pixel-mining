@@ -174,9 +174,11 @@ pixel_mining/
     geometry.py       Example circle and neighbor helpers
     __main__.py       Command-line program
 examples/
-    piece_*.png       Finished example artworks
-    noise_loose_rules.png   Early trial with rules too loose
+    piece_*.png                 Finished example artworks
+    determined_ink_*.png        Pieces shown under Projects
+    noise_loose_rules.png       Early trial with rules too loose
 ```
+
 
 ## Credits
 
@@ -187,6 +189,12 @@ Contributions are welcome: clearer teaching material, other example rules, bug f
 ## Projects
 
 - [Determined.ink](https://determined.ink) — the first public implementation of pixel mining, developed by Mariusz Brucki
+
+<p>
+  <a href="./examples/determined_ink_01.png"><img src="./examples/determined_ink_01.png" width="32%" alt="Mined piece from Determined.ink" /></a>
+  <a href="./examples/determined_ink_02.png"><img src="./examples/determined_ink_02.png" width="32%" alt="Mined piece from Determined.ink" /></a>
+  <a href="./examples/determined_ink_03.png"><img src="./examples/determined_ink_03.png" width="32%" alt="Mined piece from Determined.ink" /></a>
+</p>
 
 ## License
 
