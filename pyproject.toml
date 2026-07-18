@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "pixel-mining"
+version = "0.1.0"
+description = "Educational extract of the SHA-256 pixel mining technique from Determined.ink"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Mariusz Brucki" },
+]
+keywords = ["generative-art", "proof-of-work", "sha256", "pixel-art", "cryptographic-art"]
+
+dependencies = [
+    "Pillow",
+    "numpy",
+]
+
+[project.urls]
+Homepage = "https://determined.ink"
+
+[tool.setuptools.packages.find]
+include = ["pixel_mining*"]
