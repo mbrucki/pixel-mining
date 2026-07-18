@@ -2,7 +2,7 @@
 
 An educational implementation of SHA-256 pixel mining, a novel generative art technique. Each pixel is found by searching, in a way inspired by [proof-of-work](https://en.wikipedia.org/wiki/Proof_of_work): you try many candidates until one is accepted. The color of that pixel comes from a [hash](https://en.wikipedia.org/wiki/Cryptographic_hash_function).
 
-This repo teaches the core idea, then gives you one small program you can run. Many details in that program are artistic choices (what to use as a seed, which neighbors to compare, whether there is a shape, how strict the numbers are, and so on). Those choices are examples. They are not the definition of pixel mining. Someone else could change them and still be doing pixel mining.
+This repo teaches the core idea, then gives you one small program you can run. Many details in that program are artistic choices (what to use as a seed, which neighbors to compare, whether there is a shape, how strict the numbers are, and so on). Those choices are examples. They are not the definition of pixel mining. The technique leaves infinite room for other artists: different seeds, rules, shapes, and tastes are all still pixel mining.
 
 ## The core idea
 
