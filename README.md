@@ -182,7 +182,7 @@ examples/
 
 ## Credits
 
-Pixel mining was invented by Mariusz Brucki, a generative art artist and data engineer from Poland.
+Pixel mining was invented by Mariusz Brucki, a data engineer from Poland.
 
 Contributions are welcome: clearer teaching material, other example rules, bug fixes, docs, and experiments that stay true to the core idea. If you build something with this technique, feel free to open an issue or a pull request and share it.
 
