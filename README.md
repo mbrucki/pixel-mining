@@ -152,6 +152,14 @@ Olive and ochre tones. The circle in the middle reads as its own disk.
 
 Teal and green tones. The circle has a different grain from the background.
 
+### Mining process replay
+
+A sped-up recording of pixels locking in over time. You see the image form under the same kind of neighbor rules this repo teaches: each accepted color has to fit the chain before the next pixel can be tried.
+
+<video src="./examples/mining_process_replay.mp4" controls width="600" title="Pixel mining process replay"></video>
+
+If the player does not show in your viewer, open [mining_process_replay.mp4](./examples/mining_process_replay.mp4) directly.
+
 ## Energy and ecological impact
 
 Pixel mining uses real electricity. Every rejected nonce is hashing work, so larger images and stricter rules cost more energy. That cost is part of the medium: the work is what makes the image’s history checkable.
@@ -177,6 +185,7 @@ examples/
     piece_*.png                 Finished example artworks
     determined_ink_*.png        Pieces shown under Projects
     noise_loose_rules.png       Early trial with rules too loose
+    mining_process_replay.mp4   Sped-up recording of pixels locking in
 ```
 
 
